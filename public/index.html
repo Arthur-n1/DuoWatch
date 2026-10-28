@@ -5,86 +5,297 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Duo Watch</title>
 <style>
+  :root {
+    --bg: #0c0d12; --panel: #14161d; --panel2: #1b1e27; --line: #262a36;
+    --text: #ececf1; --muted: #8b90a0; --accent: #7c5cff; --accent2: #a48bff;
+    --green: #2fd67b; --red: #e5484d; --gold: #f5c542;
+  }
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: system-ui, sans-serif; background: #0e0f13; color: #eee; height: 100vh; display: flex; flex-direction: column; }
-  button, input { font: inherit; }
-  button { background: #2a2d38; color: #eee; border: 0; border-radius: 8px; padding: 9px 14px; cursor: pointer; }
-  button:hover { background: #3a3e4d; }
-  button.primary { background: #5b6cff; }
-  button.danger { background: #c0392b; }
-  button.off { background: #7a2a2a; }
-  #lobby { margin: auto; text-align: center; width: min(420px, 90vw); }
-  #lobby h1 { font-size: 2.2rem; margin-bottom: 4px; }
-  #lobby p.sub { color: #999; margin-top: 0; }
-  #lobby input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #333; background: #1a1c23; color: #eee; margin: 16px 0 10px; }
-  #lobby button { width: 100%; padding: 12px; }
-  #lobbyMsg { color: #ff7b7b; min-height: 1.2em; }
-  #call { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-  #stage { position: relative; flex: 1; background: #000; min-height: 0; display: flex; align-items: center; justify-content: center; }
-  #remoteScreen { width: 100%; height: 100%; object-fit: contain; }
-  #localScreen { position: absolute; right: 12px; bottom: 12px; width: 22%; min-width: 160px; border: 2px solid #5b6cff; border-radius: 8px; background: #000; }
-  #placeholder { position: absolute; color: #777; text-align: center; padding: 20px; }
-  #unmute { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); }
-  #bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px; background: #16181f; }
-  #status { flex: 1 1 200px; font-size: .9rem; color: #bbb; }
-  label { font-size: .85rem; display: flex; align-items: center; gap: 6px; }
-  select { font: inherit; background: #2a2d38; color: #eee; border: 0; border-radius: 8px; padding: 9px 10px; }
-  #stats { position: absolute; top: 10px; right: 12px; font: 12px ui-monospace, monospace; background: #000a; color: #9f9; padding: 4px 8px; border-radius: 6px; white-space: pre; pointer-events: none; }
+  html, body { height: 100%; }
+  body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, sans-serif; background: var(--bg); color: var(--text); }
+  button, input, select { font: inherit; color: inherit; }
+  button { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; cursor: pointer; transition: background .15s, transform .1s; }
+  button:hover:not(:disabled) { background: #262a36; }
+  button:active:not(:disabled) { transform: scale(.97); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.primary { background: var(--accent); border-color: var(--accent); }
+  button.primary:hover:not(:disabled) { background: var(--accent2); }
+  button.danger { background: var(--red); border-color: var(--red); }
+  button.off { background: #4a1d22; border-color: #6b2a30; }
+  input[type=text], input:not([type]) { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; outline: none; width: 100%; }
+  input:focus { border-color: var(--accent); }
+  select { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
   [hidden] { display: none !important; }
+
+  /* ----- Lobby ----- */
+  #lobby { min-height: 100%; display: grid; place-items: center; padding: 20px;
+    background: radial-gradient(circle at 30% 20%, #2a1f5c55, transparent 50%), radial-gradient(circle at 80% 80%, #0f4a3a44, transparent 50%); }
+  .lobby-card { width: min(400px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 28px; display: grid; gap: 12px; }
+  .lobby-card h1 { margin: 0; font-size: 1.9rem; }
+  .lobby-card p { margin: 0 0 6px; color: var(--muted); }
+  .lobby-card button { padding: 12px; }
+  #lobbyMsg { color: #ff8a8f; min-height: 1.2em; font-size: .9rem; }
+
+  /* ----- Mise en page appel ----- */
+  #call { height: 100%; display: grid; grid-template-columns: 1fr 340px; grid-template-rows: 1fr auto; }
+  #stage { position: relative; background: #000; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  #remoteScreen { width: 100%; height: 100%; object-fit: contain; }
+  #localScreen { position: absolute; right: 12px; bottom: 12px; width: 22%; min-width: 150px; border: 2px solid var(--accent); border-radius: 10px; background: #000; }
+  #localScreen.big { position: static; width: 100%; height: 100%; min-width: 0; border: 0; border-radius: 0; object-fit: contain; }
+  #placeholder { position: absolute; color: var(--muted); text-align: center; padding: 20px; line-height: 1.6; }
+  #placeholder b { color: var(--text); font-size: 1.2rem; }
+  #unmute { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 2; }
+  #stats { position: absolute; top: 10px; left: 12px; font: 12px ui-monospace, monospace; background: #000b; color: #9f9; padding: 6px 8px; border-radius: 8px; white-space: pre; pointer-events: none; }
+
+  #side { grid-row: 1 / 3; grid-column: 2; background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+  #bar { grid-column: 1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 10px; background: var(--panel); border-top: 1px solid var(--line); }
+  #bar button, #bar select { padding: 7px 10px; }
+  #status { flex: 1 1 90px; min-width: 0; font-size: .85rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .vol { font-size: .85rem; display: flex; align-items: center; gap: 4px; color: var(--muted); }
+  .vol input { width: 64px; accent-color: var(--accent); }
+
+  /* ----- Participants ----- */
+  #people { padding: 14px; border-bottom: 1px solid var(--line); display: grid; gap: 10px; }
+  .side-title { font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .person { display: flex; align-items: center; gap: 10px; }
+  .avatar { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; flex: none;
+    box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px transparent; transition: box-shadow .15s; position: relative; }
+  .avatar.speaking { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--green), 0 0 14px 4px #2fd67b88; }
+  .avatar .dot { position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; border-radius: 50%; background: var(--green); border: 2px solid var(--panel); }
+  .pname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pname small { color: var(--muted); }
+  .picons { font-size: .95rem; }
+  .person.waiting { color: var(--muted); font-size: .9rem; }
+  .person.waiting .avatar { background: transparent; border: 2px dashed var(--line); box-shadow: none; }
+
+  /* ----- Onglets ----- */
+  .tabs { display: flex; border-bottom: 1px solid var(--line); }
+  .tabs button { flex: 1; border: 0; border-radius: 0; background: transparent; padding: 12px; color: var(--muted); border-bottom: 2px solid transparent; position: relative; }
+  .tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
+  .badge { background: var(--red); color: #fff; border-radius: 99px; font-size: .7rem; padding: 1px 6px; margin-left: 4px; }
+  .pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+  /* ----- Chat ----- */
+  #chatLog { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .msg { max-width: 85%; align-self: flex-start; }
+  .msg.mine { align-self: flex-end; text-align: right; }
+  .msg .meta { font-size: .72rem; color: var(--muted); margin: 0 4px 2px; }
+  .bubble { background: var(--panel2); padding: 8px 12px; border-radius: 14px 14px 14px 4px; word-wrap: break-word; white-space: pre-wrap; text-align: left; display: inline-block; }
+  .msg.mine .bubble { background: var(--accent); border-radius: 14px 14px 4px 14px; }
+  .sys { align-self: center; font-size: .78rem; color: var(--muted); }
+  #chatForm { display: flex; gap: 6px; padding: 10px; border-top: 1px solid var(--line); }
+
+  /* ----- Films ----- */
+  #filmsPane { padding: 12px; gap: 10px; overflow-y: auto; }
+  .search-wrap { position: relative; }
+  #suggest { position: absolute; left: 0; right: 0; top: calc(100% + 4px); background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; z-index: 5; max-height: 330px; overflow-y: auto; box-shadow: 0 10px 30px #000a; }
+  #suggest:empty { display: none; }
+  .sugg { display: flex; gap: 10px; align-items: center; width: 100%; text-align: left; border: 0; border-radius: 0; background: transparent; padding: 8px; }
+  .sugg small { display: block; color: var(--muted); }
+  .sugg.free { color: var(--accent2); }
+  .thumb { width: 36px; height: 52px; border-radius: 6px; object-fit: cover; flex: none; font-size: .55rem; }
+  .noposter { display: grid; place-items: center; text-align: center; padding: 4px; font-weight: 700; overflow: hidden;
+    background: linear-gradient(135deg, #3b2a85, #12634a); color: #fff; }
+  .count { font-size: .85rem; color: var(--muted); display: flex; justify-content: space-between; }
+  #filmList { display: grid; gap: 6px; }
+  .film { display: flex; gap: 10px; align-items: center; background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 6px; }
+  .film .info { flex: 1; min-width: 0; }
+  .film .info b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .film .info small { color: var(--muted); }
+  .film button { padding: 4px 9px; border: 0; background: transparent; color: var(--muted); }
+  .empty { color: var(--muted); font-size: .9rem; text-align: center; padding: 18px 8px; border: 1px dashed var(--line); border-radius: 12px; }
+  #filmActions { display: grid; gap: 6px; }
+  #filmActions button { padding: 11px; }
+  .hint { font-size: .8rem; color: var(--muted); text-align: center; }
+
+  /* ----- Modales (duel / résultats) ----- */
+  .overlay { position: fixed; inset: 0; background: #07080bee; backdrop-filter: blur(6px); z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; gap: 18px; }
+  .overlay h2 { margin: 0; text-align: center; }
+  .progress { width: min(520px, 90vw); height: 6px; background: var(--line); border-radius: 99px; overflow: hidden; }
+  .progress div { height: 100%; background: var(--accent); transition: width .3s; }
+  .muted { color: var(--muted); }
+  #arena { display: flex; gap: 22px; align-items: center; justify-content: center; touch-action: pan-y; user-select: none; transition: transform .2s; }
+  #arena.dragging { transition: none; }
+  .vs { font-weight: 800; color: var(--muted); font-size: 1.3rem; }
+  .card { width: min(260px, 38vw); background: var(--panel); border: 2px solid var(--line); border-radius: 16px; overflow: hidden; cursor: pointer;
+    transition: transform .2s, border-color .2s, opacity .2s, box-shadow .2s; padding: 0; text-align: left; }
+  .card:hover, .card.lean { border-color: var(--accent); transform: translateY(-4px); box-shadow: 0 12px 30px #7c5cff44; }
+  .card.win { border-color: var(--green); transform: scale(1.06); box-shadow: 0 0 30px #2fd67b66; }
+  .card.lose { opacity: .25; transform: scale(.92); }
+  .card .poster { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; display: block; }
+  .card .poster.noposter, .step .noposter { display: grid; font-size: 1.4rem; padding: 14px; }
+  .thumb.noposter { font-size: .8rem; }
+  .card .cap { padding: 10px 12px; }
+  .card .cap b { display: block; }
+  .card .cap small { color: var(--muted); }
+  .overlay-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+
+  /* Podium */
+  .podium { display: flex; align-items: flex-end; gap: 14px; justify-content: center; }
+  .step { display: flex; flex-direction: column; align-items: center; gap: 8px; width: min(190px, 28vw); text-align: center; }
+  .step img, .step .noposter { width: 100%; aspect-ratio: 2 / 3; border-radius: 12px; object-fit: cover; }
+  .step.p1 img, .step.p1 .noposter { box-shadow: 0 0 0 3px var(--gold), 0 0 30px #f5c54255; }
+  .step .medal { font-size: 2rem; line-height: 1; }
+  .step b { font-size: .95rem; }
+  .step small { color: var(--muted); }
+  .step .block { width: 100%; border-radius: 10px 10px 0 0; background: var(--panel2); border: 1px solid var(--line); display: grid; place-items: center; font-weight: 800; color: var(--muted); }
+  .step.p1 .block { height: 70px; } .step.p2 .block { height: 45px; } .step.p3 .block { height: 28px; }
+  .p2, .p3 { transform: scale(.9); transform-origin: bottom; }
+  .tops { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+  .tops div { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; min-width: 200px; font-size: .9rem; }
+  .tops ol { margin: 6px 0 0; padding-left: 20px; }
+  .match { color: var(--green); font-weight: 700; }
+
+  #toast { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); background: var(--panel2); border: 1px solid var(--line); padding: 10px 16px; border-radius: 12px; z-index: 100; box-shadow: 0 10px 30px #000a; }
+
+  @media (max-width: 860px) {
+    #call { grid-template-columns: 1fr; grid-template-rows: minmax(220px, 45vh) auto 1fr; height: auto; min-height: 100%; }
+    #side { grid-row: 3; grid-column: 1; border-left: 0; border-top: 1px solid var(--line); min-height: 50vh; }
+    #bar { grid-row: 2; }
+    #arena { gap: 10px; }
+    .vs { font-size: 1rem; }
+  }
 </style>
 </head>
 <body>
 
+<!-- ============ LOBBY ============ -->
 <div id="lobby">
-  <h1>🎬 Duo Watch</h1>
-  <p class="sub">Appel + partage d'écran avec le son, à deux.</p>
-  <input id="room" placeholder="Code du salon (ex : soiree-film)" autocomplete="off">
-  <button id="joinBtn" class="primary">Rejoindre</button>
-  <p id="lobbyMsg"></p>
+  <div class="lobby-card">
+    <h1>🎬 Duo Watch</h1>
+    <p>Appel, partage d'écran avec le son, chat et duel de films.</p>
+    <input id="name" placeholder="Ton prénom" maxlength="24" autocomplete="off">
+    <input id="room" placeholder="Code du salon (ex : soiree-film)" maxlength="50" autocomplete="off">
+    <button id="joinBtn" class="primary">Rejoindre</button>
+    <div id="lobbyMsg"></div>
+  </div>
 </div>
 
+<!-- ============ APPEL ============ -->
 <div id="call" hidden>
-  <div id="stage">
+  <main id="stage">
     <video id="remoteScreen" autoplay playsinline hidden></video>
     <video id="localScreen" autoplay playsinline muted hidden></video>
-    <div id="placeholder">Personne ne partage son écran.</div>
+    <div id="placeholder"><b>Personne ne partage son écran</b><br>Clique sur 🖥️ Partager l'écran pour lancer un film.</div>
     <button id="unmute" class="primary" hidden>🔊 Cliquer pour activer le son</button>
     <div id="stats" hidden></div>
-  </div>
-  <div id="bar">
+  </main>
+
+  <aside id="side">
+    <section id="people">
+      <div class="side-title">Dans le salon</div>
+      <div id="peopleList"></div>
+    </section>
+    <nav class="tabs">
+      <button data-tab="chat" class="active">💬 Chat <span id="chatBadge" class="badge" hidden>0</span></button>
+      <button data-tab="films">🎬 Films <span id="filmBadge" class="badge" hidden>!</span></button>
+    </nav>
+    <section id="chatPane" class="pane">
+      <div id="chatLog"></div>
+      <form id="chatForm" autocomplete="off">
+        <input id="chatInput" placeholder="Écris un message…" maxlength="500">
+        <button class="primary" type="submit">➤</button>
+      </form>
+    </section>
+    <section id="filmsPane" class="pane" hidden>
+      <div class="search-wrap">
+        <input id="filmSearch" placeholder="🔎 Ajouter un film ou une série…" maxlength="100">
+        <div id="suggest"></div>
+      </div>
+      <div class="count"><span>Votre liste</span><span id="filmCount">0 / 10</span></div>
+      <div id="filmList"></div>
+      <div id="filmActions"></div>
+    </section>
+  </aside>
+
+  <footer id="bar">
     <span id="status">…</span>
-    <button id="copyBtn">🔗 Copier le lien</button>
-    <button id="micBtn">🎙️ Micro ON</button>
+    <button id="micBtn">🎙️ Micro</button>
     <button id="shareBtn" class="primary">🖥️ Partager l'écran</button>
     <select id="quality" title="Qualité du partage">
       <option value="detail">🔍 Netteté max</option>
       <option value="motion">⚡ Fluidité max</option>
     </select>
-    <button id="statsBtn" title="Afficher résolution / débit">📊</button>
-    <label>🗣️ Voix <input id="voiceVol" type="range" min="0" max="1" step="0.05" value="1"></label>
-    <label>🎬 Son écran <input id="screenVol" type="range" min="0" max="1" step="0.05" value="1"></label>
-    <button id="fsBtn">⛶ Plein écran</button>
-    <button id="leaveBtn" class="danger">Quitter</button>
+    <label class="vol">🗣️ <input id="voiceVol" type="range" min="0" max="1" step="0.05" value="1"></label>
+    <label class="vol">🎬 <input id="screenVol" type="range" min="0" max="1" step="0.05" value="1"></label>
+    <button id="fsBtn" title="Plein écran">⛶</button>
+    <button id="statsBtn" title="Résolution / débit">📊</button>
+    <button id="copyBtn" title="Copier le lien d'invitation">🔗</button>
+    <button id="leaveBtn" class="danger" title="Quitter">✕</button>
+  </footer>
+</div>
+
+<!-- ============ DUEL ============ -->
+<div id="duel" class="overlay" hidden>
+  <h2 id="duelTitle">Lequel tu préfères ?</h2>
+  <div class="progress"><div id="duelBar" style="width:0"></div></div>
+  <div id="duelStep" class="muted"></div>
+  <div id="arena"></div>
+  <div id="duelHint" class="muted">Clique, utilise ← →, ou glisse vers ton choix</div>
+  <div class="overlay-actions">
+    <button id="duelHide">Masquer</button>
+    <button id="duelCancel" class="danger">Annuler le duel</button>
   </div>
 </div>
 
+<!-- ============ RÉSULTATS ============ -->
+<div id="results" class="overlay" hidden>
+  <h2>🏆 Votre top 3</h2>
+  <div id="matchLine"></div>
+  <div id="podium" class="podium"></div>
+  <div id="tops" class="tops"></div>
+  <div class="overlay-actions">
+    <button id="resClose">Fermer</button>
+    <button id="resAgain" class="primary">🔁 Recommencer</button>
+  </div>
+</div>
+
+<div id="toast" hidden></div>
 <audio id="remoteVoice" autoplay></audio>
 
 <script>
 const $ = id => document.getElementById(id);
-let ws, pc, iceConfig, micStream, screenStream;
+const el = (tag, props = {}, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === 'class') e.className = v;
+    else if (k === 'style') e.style.cssText = v;
+    else if (k.startsWith('data-')) e.setAttribute(k, v);
+    else e[k] = v;
+  }
+  for (const c of kids.flat()) if (c != null && c !== false) e.append(c);
+  return e;
+};
+
+let ws, pc, iceConfig, micStream, screenStream, myId, audioCtx;
 let polite = false, makingOffer = false, ignoreOffer = false;
 let screenSenders = [], remoteScreenId = null;
-
-$('room').value = decodeURIComponent(location.hash.slice(1));
-$('room').addEventListener('keydown', e => e.key === 'Enter' && $('joinBtn').click());
+let people = [], films = [], phase = 'idle', done = [], result = null;
+let activeTab = 'chat', unread = 0;
 
 const send = obj => ws?.readyState === 1 && ws.send(JSON.stringify(obj));
 const setStatus = t => ($('status').textContent = t);
+const store = { get: k => { try { return localStorage.getItem(k) || ''; } catch { return ''; } },
+                set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
 
-// ---------- Rejoindre ----------
+let toastT;
+function toast(text) {
+  $('toast').textContent = text;
+  $('toast').hidden = false;
+  clearTimeout(toastT);
+  toastT = setTimeout(() => ($('toast').hidden = true), 3000);
+}
+
+// ============ LOBBY ============
+$('name').value = store.get('dw-name');
+$('room').value = decodeURIComponent(location.hash.slice(1));
+(location.hash ? ($('name').value ? $('joinBtn') : $('name')) : ($('name').value ? $('room') : $('name'))).focus?.();
+['name', 'room'].forEach(id => $(id).addEventListener('keydown', e => e.key === 'Enter' && $('joinBtn').click()));
+
 $('joinBtn').onclick = async () => {
+  const name = $('name').value.trim();
   const room = $('room').value.trim();
+  if (!name) return ($('lobbyMsg').textContent = 'Entre ton prénom.');
   if (!room) return ($('lobbyMsg').textContent = 'Entre un code de salon.');
   try {
     micStream = await navigator.mediaDevices.getUserMedia({
@@ -93,23 +304,37 @@ $('joinBtn').onclick = async () => {
   } catch (e) {
     return ($('lobbyMsg').textContent = 'Accès au micro refusé : ' + e.message);
   }
-  iceConfig = await fetch('/config').then(r => r.json());
+  store.set('dw-name', name);
+  audioCtx = new AudioContext();
+  audioCtx.resume();
+  watchLevel('me', micStream);
+  iceConfig = await fetch('/config').then(r => r.json()).catch(() => ({ iceServers: [] }));
   location.hash = encodeURIComponent(room);
   $('lobby').hidden = true;
   $('call').hidden = false;
-  connect(room);
+  connect(room, name);
 };
 
-function connect(room) {
+function connect(room, name) {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}`);
-  ws.onopen = () => send({ type: 'join', room });
-  ws.onclose = () => setStatus('⚠️ Déconnecté du serveur — recharge la page.');
+  ws.onopen = () => send({ type: 'join', room, name });
+  ws.onclose = () => setStatus('⚠️ Déconnecté du serveur, recharge la page.');
   ws.onmessage = async ({ data }) => {
     const msg = JSON.parse(data);
     switch (msg.type) {
-      case 'joined': setStatus('⏳ En attente de l’autre personne… Envoie-lui le lien.'); break;
+      case 'joined': myId = msg.id; setStatus('⏳ En attente de l’autre… Envoie-lui le lien 🔗'); break;
       case 'full': alert('Salon plein (2 personnes max).'); location.hash = ''; location.reload(); break;
+      case 'presence': people = msg.people; renderPeople(); renderFilms(); break;
+      case 'system': addSystem(msg.text); break;
+      case 'chat': addChat(msg); break;
+      case 'films': onFilms(msg); break;
+      case 'rank-start':
+        toast(`⚔️ ${msg.by} a lancé le duel !`);
+        $('results').hidden = true;
+        openDuel();
+        break;
+      case 'rank-cancel': closeDuel(); toast(`Duel annulé par ${msg.by}`); break;
       case 'ready': polite = msg.polite; startPeer(); setStatus('🔄 Connexion…'); break;
       case 'peer-left': closePeer(); setStatus('👋 L’autre est parti. En attente…'); break;
       case 'screen': remoteScreenId = msg.id; break;
@@ -123,7 +348,325 @@ function connect(room) {
   };
 }
 
-// ---------- WebRTC (perfect negotiation) ----------
+// ============ PARTICIPANTS + VOIX ============
+const COLORS = ['#7c5cff', '#e5484d', '#12a594', '#f76b15', '#3e63dd', '#d6409f', '#46a758'];
+const colorFor = s => COLORS[[...s].reduce((a, c) => a + c.charCodeAt(0), 0) % COLORS.length];
+const initials = s => s.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+const speaking = { me: false, peer: false };
+const meters = {};
+const lastLoud = {};
+
+function watchLevel(key, stream) {
+  if (!audioCtx || meters[key]?.stream === stream) return;
+  try { meters[key]?.src.disconnect(); } catch {}
+  const src = audioCtx.createMediaStreamSource(stream);
+  const an = audioCtx.createAnalyser();
+  an.fftSize = 512;
+  src.connect(an);
+  meters[key] = { stream, src, an, buf: new Uint8Array(an.fftSize) };
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const k in meters) {
+    const { an, buf } = meters[k];
+    an.getByteTimeDomainData(buf);
+    let sum = 0;
+    for (const v of buf) { const x = (v - 128) / 128; sum += x * x; }
+    if (Math.sqrt(sum / buf.length) > 0.03) lastLoud[k] = now;
+    const sp = now - (lastLoud[k] || 0) < 300;
+    if (sp !== speaking[k]) {
+      speaking[k] = sp;
+      document.querySelectorAll(`.avatar[data-key="${k}"]`).forEach(a => a.classList.toggle('speaking', sp));
+    }
+  }
+}, 80);
+
+function renderPeople() {
+  const rows = people.map(p => {
+    const me = p.id === myId;
+    const key = me ? 'me' : 'peer';
+    return el('div', { class: 'person' },
+      el('div', { class: 'avatar' + (speaking[key] ? ' speaking' : ''), 'data-key': key, style: `background:${colorFor(p.name)}` },
+        initials(p.name), el('span', { class: 'dot', title: 'Connecté' })),
+      el('div', { class: 'pname' }, p.name, me ? el('small', {}, ' (toi)') : null),
+      el('span', { class: 'picons', title: p.sharing ? 'Partage son écran' : '' }, (p.sharing ? '🖥️ ' : '') + (p.mic ? '' : '🔇')));
+  });
+  if (people.length < 2) rows.push(el('div', { class: 'person waiting' }, el('div', { class: 'avatar' }), 'En attente de quelqu’un…'));
+  $('peopleList').replaceChildren(...rows);
+}
+const otherName = () => people.find(p => p.id !== myId)?.name || 'l’autre';
+
+// ============ ONGLETS ============
+document.querySelectorAll('.tabs button').forEach(b => (b.onclick = () => showTab(b.dataset.tab)));
+function showTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  $('chatPane').hidden = tab !== 'chat';
+  $('filmsPane').hidden = tab !== 'films';
+  if (tab === 'chat') { unread = 0; $('chatBadge').hidden = true; $('chatLog').scrollTop = 1e9; $('chatInput').focus(); }
+  if (tab === 'films') $('filmBadge').hidden = true;
+}
+
+// ============ CHAT ============
+function pushLog(node) {
+  const log = $('chatLog');
+  const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 60;
+  log.append(node);
+  if (atBottom) log.scrollTop = 1e9;
+}
+function addChat(m) {
+  const mine = m.id === myId;
+  const time = new Date(m.ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  pushLog(el('div', { class: 'msg' + (mine ? ' mine' : '') },
+    el('div', { class: 'meta' }, `${mine ? 'Toi' : m.from} · ${time}`),
+    el('div', { class: 'bubble' }, m.text)));
+  if (mine) $('chatLog').scrollTop = 1e9;
+  if (!mine && activeTab !== 'chat') {
+    unread++;
+    $('chatBadge').textContent = unread;
+    $('chatBadge').hidden = false;
+    toast(`💬 ${m.from} : ${m.text.slice(0, 60)}`);
+  }
+}
+const addSystem = text => pushLog(el('div', { class: 'sys' }, text));
+$('chatForm').onsubmit = e => {
+  e.preventDefault();
+  const text = $('chatInput').value.trim();
+  if (!text) return;
+  send({ type: 'chat', text });
+  $('chatInput').value = '';
+};
+
+// ============ FILMS ============
+function posterEl(f, cls) {
+  // sans affiche : titre en grand (initiales sur les petites vignettes)
+  const fallback = () => el('div', { class: cls + ' noposter', style: `background:linear-gradient(135deg, ${colorFor(f.title)}, #12172a)` },
+    cls === 'thumb' ? initials(f.title) : f.title);
+  if (!f.poster) return fallback();
+  const img = el('img', { class: cls, src: f.poster, alt: f.title, loading: 'lazy', draggable: false });
+  img.onerror = () => img.replaceWith(fallback());
+  return img;
+}
+const sub = f => [f.type, f.year].filter(Boolean).join(' · ');
+
+let searchT, searchSeq = 0, lastSugg = [];
+$('filmSearch').oninput = () => {
+  clearTimeout(searchT);
+  const q = $('filmSearch').value.trim();
+  if (q.length < 2) { $('suggest').replaceChildren(); lastSugg = []; return; }
+  searchT = setTimeout(() => doSearch(q), 300);
+};
+$('filmSearch').onkeydown = e => {
+  if (e.key === 'Escape') $('suggest').replaceChildren();
+  if (e.key !== 'Enter') return;
+  const q = $('filmSearch').value.trim();
+  if (q) addFilm(lastSugg[0] || { title: q });
+};
+document.addEventListener('click', e => { if (!e.target.closest('.search-wrap')) $('suggest').replaceChildren(); });
+
+async function doSearch(q) {
+  const seq = ++searchSeq;
+  let res = [];
+  try { res = await fetch('/search?q=' + encodeURIComponent(q)).then(r => r.json()); } catch {}
+  if (seq !== searchSeq) return;
+  lastSugg = res;
+  $('suggest').replaceChildren(
+    ...res.map(f => el('button', { class: 'sugg', onclick: () => addFilm(f) },
+      posterEl(f, 'thumb'), el('div', {}, el('b', {}, f.title), el('small', {}, sub(f))))),
+    el('button', { class: 'sugg free', onclick: () => addFilm({ title: q }) }, `➕ Ajouter « ${q} » tel quel`));
+}
+
+function addFilm(f) {
+  if (phase === 'ranking') return toast('Duel en cours, attends la fin.');
+  if (films.length >= 10) return toast('Maximum 10 titres.');
+  if (films.some(x => x.title.toLowerCase() === f.title.toLowerCase())) return toast('Déjà dans la liste.');
+  send({ type: 'film-add', film: f });
+  $('filmSearch').value = '';
+  $('suggest').replaceChildren();
+  lastSugg = [];
+}
+
+let prevResult = null, firstFilms = true;
+function onFilms(msg) {
+  if (firstFilms) { firstFilms = false; prevResult = msg.result; } // pas de podium surprise en arrivant
+  const changed = msg.films.length !== films.length;
+  films = msg.films; phase = msg.phase; done = msg.done; result = msg.result;
+  renderFilms();
+  if (changed && activeTab !== 'films') $('filmBadge').hidden = false;
+  if (phase !== 'ranking' && !$('duel').hidden) closeDuel();
+  if (phase === 'ranking' && done.some(d => d.id === myId) && !$('duel').hidden) showWaiting();
+  if (result && !prevResult) showResults();
+  if (!result) $('results').hidden = true;
+  prevResult = result;
+}
+
+function renderFilms() {
+  $('filmCount').textContent = `${films.length} / 10`;
+  $('filmSearch').disabled = phase === 'ranking' || films.length >= 10;
+  $('filmSearch').placeholder = films.length >= 10 ? 'Liste complète (10/10)' : '🔎 Ajouter un film ou une série…';
+  $('filmList').replaceChildren(...(films.length ? films.map(f =>
+    el('div', { class: 'film' },
+      posterEl(f, 'thumb'),
+      el('div', { class: 'info' }, el('b', {}, f.title), el('small', {}, [sub(f), `ajouté par ${f.by}`].filter(Boolean).join(' · '))),
+      el('button', { title: 'Retirer', disabled: phase === 'ranking', onclick: () => send({ type: 'film-remove', id: f.id }) }, '✕')))
+    : [el('div', { class: 'empty' }, 'Ajoutez jusqu’à 10 films ou séries chacun votre tour, puis lancez le duel pour trouver votre top 3 commun.')]));
+
+  const a = [];
+  const iAmDone = done.some(d => d.id === myId);
+  if (phase === 'idle') {
+    a.push(el('button', { class: 'primary', disabled: films.length < 3 || people.length < 2, onclick: () => send({ type: 'rank-start' }) }, '⚔️ Lancer le duel'));
+    if (films.length < 3) a.push(el('div', { class: 'hint' }, `Ajoute au moins 3 titres (encore ${3 - films.length}).`));
+    else if (people.length < 2) a.push(el('div', { class: 'hint' }, 'Il faut être deux dans le salon.'));
+  } else if (phase === 'ranking') {
+    if (iAmDone) a.push(el('div', { class: 'hint' }, `✅ Tu as fini. En attente de ${otherName()}…`));
+    else a.push(el('button', { class: 'primary', onclick: openDuel }, '⚔️ Reprendre le duel'));
+    done.filter(d => d.id !== myId).forEach(d => a.push(el('div', { class: 'hint' }, `✅ ${d.name} a terminé`)));
+    a.push(el('button', { onclick: () => send({ type: 'rank-cancel' }) }, 'Annuler le duel'));
+  } else if (phase === 'done') {
+    a.push(el('button', { class: 'primary', onclick: showResults }, '🏆 Voir le top 3'));
+    a.push(el('button', { onclick: () => send({ type: 'rank-reset' }) }, '🔁 Recommencer'));
+  }
+  $('filmActions').replaceChildren(...a);
+}
+
+// ============ DUEL (tri par insertion binaire : ~20 duels pour 10 titres) ============
+let duelToken = 0, duelRunning = false, current = null;
+const shuffle = arr => { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; };
+const estimate = n => { let t = 0; for (let k = 1; k < n; k++) t += Math.ceil(Math.log2(k + 1)); return t; };
+
+async function openDuel() {
+  $('duel').hidden = false;
+  if (done.some(d => d.id === myId)) return showWaiting();
+  if (duelRunning) return;
+  duelRunning = true;
+  const token = ++duelToken;
+  $('duelTitle').textContent = 'Lequel tu préfères ?';
+  $('duelHint').hidden = false;
+  $('duelBar').parentElement.hidden = false;
+  const items = shuffle(films.slice());
+  const total = estimate(items.length);
+  let count = 0;
+  const sorted = [items[0]];
+  for (let i = 1; i < items.length; i++) {
+    const x = items[i];
+    let lo = 0, hi = sorted.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      count++;
+      const winner = await askDuel(x, sorted[mid], Math.min(count, total), total);
+      if (token !== duelToken) return;
+      if (winner === x) hi = mid; else lo = mid + 1;
+    }
+    sorted.splice(lo, 0, x);
+  }
+  duelRunning = false;
+  send({ type: 'rank-done', order: sorted.map(f => f.id) });
+  showWaiting();
+}
+
+function showWaiting() {
+  current = null;
+  $('duelTitle').textContent = '✅ C’est noté !';
+  $('duelStep').textContent = `En attente de ${otherName()}…`;
+  $('duelBar').style.width = '100%';
+  $('duelHint').hidden = true;
+  $('arena').replaceChildren();
+}
+
+function closeDuel() {
+  duelToken++;
+  duelRunning = false;
+  current?.resolve(null);
+  current = null;
+  $('duel').hidden = true;
+}
+
+function askDuel(x, y, count, total) {
+  return new Promise(resolve => {
+    const [left, right] = Math.random() < 0.5 ? [x, y] : [y, x];
+    const card = (f, side) => el('button', { class: 'card', 'data-side': side, onclick: () => pick(side) },
+      posterEl(f, 'poster'),
+      el('div', { class: 'cap' }, el('b', {}, f.title), el('small', {}, sub(f) || `ajouté par ${f.by}`)));
+    $('arena').replaceChildren(card(left, 'left'), el('div', { class: 'vs' }, 'VS'), card(right, 'right'));
+    $('duelStep').textContent = `Duel ${count} sur ~${total}`;
+    $('duelBar').style.width = `${(count - 1) / total * 100}%`;
+    current = { left, right, resolve, locked: false };
+  });
+}
+
+function pick(side) {
+  if (!current || current.locked) return;
+  current.locked = true;
+  const c = current;
+  $('arena').querySelectorAll('.card').forEach(k => k.classList.add(k.dataset.side === side ? 'win' : 'lose'));
+  setTimeout(() => c.resolve(side === 'left' ? c.left : c.right), 260);
+}
+
+$('duelHide').onclick = () => ($('duel').hidden = true);
+$('duelCancel').onclick = () => send({ type: 'rank-cancel' });
+document.addEventListener('keydown', e => {
+  if ($('duel').hidden || !current) return;
+  if (e.key === 'ArrowLeft') pick('left');
+  if (e.key === 'ArrowRight') pick('right');
+});
+
+// Glisser (souris ou doigt) vers le film choisi
+let drag = null;
+$('arena').addEventListener('pointerdown', e => { if (current && !current.locked) drag = { x: e.clientX, dx: 0 }; });
+window.addEventListener('pointermove', e => {
+  if (!drag) return;
+  drag.dx = e.clientX - drag.x;
+  if (Math.abs(drag.dx) < 8) return;
+  $('arena').classList.add('dragging');
+  $('arena').style.transform = `translateX(${drag.dx * 0.35}px) rotate(${drag.dx * 0.01}deg)`;
+  $('arena').querySelectorAll('.card').forEach(k =>
+    k.classList.toggle('lean', Math.abs(drag.dx) > 40 && k.dataset.side === (drag.dx < 0 ? 'left' : 'right')));
+});
+window.addEventListener('pointerup', () => {
+  if (!drag) return;
+  const dx = drag.dx;
+  drag = null;
+  $('arena').classList.remove('dragging');
+  $('arena').style.transform = '';
+  if (Math.abs(dx) > 70) {
+    // empêche le clic qui suit le relâchement
+    $('arena').addEventListener('click', ev => ev.stopPropagation(), { capture: true, once: true });
+    pick(dx < 0 ? 'left' : 'right');
+  }
+});
+
+// ============ RÉSULTATS ============
+function showResults() {
+  if (!result) return;
+  $('duel').hidden = true;
+  const byId = id => films.find(f => f.id === id) || { title: '?' };
+  const medals = ['🥇', '🥈', '🥉'];
+  const steps = result.top.map((t, i) => {
+    const f = byId(t.id);
+    return el('div', { class: `step p${i + 1}` },
+      el('div', { class: 'medal' }, medals[i]),
+      posterEl(f, ''),
+      el('b', {}, f.title),
+      el('small', {}, `${t.score} / ${result.max} pts`),
+      el('div', { class: 'block' }, i + 1));
+  });
+  // ordre podium : 2 - 1 - 3
+  $('podium').replaceChildren(...[steps[1], steps[0], steps[2]].filter(Boolean));
+  $('tops').replaceChildren(...result.perPerson.map(p =>
+    el('div', {}, el('b', {}, p.id === myId ? 'Ton top 3' : `Top 3 de ${p.name}`),
+      el('ol', {}, ...p.top.map(id => el('li', {}, byId(id).title))))));
+  const [a, b] = result.perPerson;
+  const shared = a && b ? a.top.filter(id => b.top.includes(id)).length : 0;
+  $('matchLine').replaceChildren(a && b && a.top[0] === b.top[0]
+    ? el('div', { class: 'match' }, `💘 Match parfait : vous avez le même n°1 !`)
+    : el('div', { class: 'muted' }, `${shared} titre${shared > 1 ? 's' : ''} en commun dans vos top 3`));
+  $('results').hidden = false;
+}
+$('resClose').onclick = () => ($('results').hidden = true);
+$('resAgain').onclick = () => { $('results').hidden = true; send({ type: 'rank-reset' }); };
+
+// ============ WebRTC (perfect negotiation) ============
 function startPeer() {
   closePeer();
   pc = new RTCPeerConnection(iceConfig);
@@ -131,7 +674,6 @@ function startPeer() {
   if (screenStream) addScreenTracks();
 
   pc.onicecandidate = ({ candidate }) => candidate && send({ type: 'candidate', candidate });
-
   pc.onnegotiationneeded = async () => {
     try {
       makingOffer = true;
@@ -152,6 +694,7 @@ function startPeer() {
       const a = $('remoteVoice');
       if (a.srcObject !== stream) a.srcObject = stream;
       a.play().catch(() => ($('unmute').hidden = false));
+      watchLevel('peer', stream);
     }
   };
 
@@ -181,24 +724,18 @@ async function onDescription(description) {
   }
 }
 
-// Débit vidéo de départ élevé (sinon Chrome démarre ~300 kb/s et l'image reste floue un moment)
+// Débit vidéo de départ élevé (sinon l'image reste floue les premières secondes)
 function boostSdp(sdp) {
   const params = 'x-google-start-bitrate=5000;x-google-min-bitrate=1500';
   return sdp.split(/\r\nm=/).map((sec, i) => {
     if (!(i === 0 ? sec.startsWith('m=video') : sec.startsWith('video'))) return sec;
     const lines = sec.split('\r\n');
     const pts = [];
-    lines.forEach(l => {
-      const m = l.match(/^a=rtpmap:(\d+) (VP8|VP9|AV1|H264)\//i);
-      if (m) pts.push(m[1]);
-    });
+    lines.forEach(l => { const m = l.match(/^a=rtpmap:(\d+) (VP8|VP9|AV1|H264)\//i); if (m) pts.push(m[1]); });
     for (const pt of pts) {
       const fi = lines.findIndex(l => l.startsWith(`a=fmtp:${pt} `));
       if (fi >= 0) { if (!lines[fi].includes('x-google')) lines[fi] += ';' + params; }
-      else {
-        const ri = lines.findIndex(l => l.startsWith(`a=rtpmap:${pt} `));
-        lines.splice(ri + 1, 0, `a=fmtp:${pt} ${params}`);
-      }
+      else lines.splice(lines.findIndex(l => l.startsWith(`a=rtpmap:${pt} `)) + 1, 0, `a=fmtp:${pt} ${params}`);
     }
     return lines.join('\r\n');
   }).join('\r\nm=');
@@ -214,7 +751,7 @@ function closePeer() {
   updateStage();
 }
 
-// ---------- Partage d'écran ----------
+// ============ PARTAGE D'ÉCRAN ============
 $('shareBtn').onclick = () => (screenStream ? stopShare() : startShare());
 
 async function startShare() {
@@ -226,32 +763,28 @@ async function startShare() {
       },
       audio: {
         echoCancellation: false, noiseSuppression: false, autoGainControl: false,
-        suppressLocalAudioPlayback: false,
-        restrictOwnAudio: true // évite de renvoyer la voix de l'autre (Chrome récent)
+        suppressLocalAudioPlayback: false, restrictOwnAudio: true
       },
-      systemAudio: 'include',
-      selfBrowserSurface: 'exclude',
-      surfaceSwitching: 'include'
+      systemAudio: 'include', selfBrowserSurface: 'exclude', surfaceSwitching: 'include'
     });
-  } catch { return; } // annulé par l'utilisateur
+  } catch { return; }
 
   const v = screenStream.getVideoTracks()[0];
   v.contentHint = $('quality').value;
-  v.onended = stopShare; // bouton "Arrêter le partage" du navigateur
-
+  v.onended = stopShare;
   if (!screenStream.getAudioTracks().length) {
-    alert('⚠️ Aucun son capturé.\nRelance le partage et coche « Partager l’audio » (onglet ou écran entier sous Windows).');
+    alert('⚠️ Aucun son capturé.\nRelance le partage et coche « Partager l’audio » (onglet, ou écran entier sous Windows).');
   }
-
   $('localScreen').srcObject = screenStream;
-  $('shareBtn').textContent = '⏹️ Arrêter le partage';
+  $('shareBtn').textContent = '⏹️ Arrêter';
   $('shareBtn').classList.replace('primary', 'danger');
   updateStage();
   if (pc) addScreenTracks();
+  else send({ type: 'screen', id: screenStream.id });
 }
 
 function addScreenTracks() {
-  send({ type: 'screen', id: screenStream.id }); // envoyé AVANT l'offre → l'autre sait quel flux est l'écran
+  send({ type: 'screen', id: screenStream.id }); // avant l'offre → l'autre sait quel flux est l'écran
   screenSenders = screenStream.getTracks().map(t => {
     const tr = pc.addTransceiver(t, {
       direction: 'sendonly',
@@ -260,22 +793,15 @@ function addScreenTracks() {
         ? { maxBitrate: 10_000_000, maxFramerate: 60, scaleResolutionDownBy: 1 }
         : { maxBitrate: 192_000 }]
     });
-    if (t.kind === 'video') {
-      preferCodecs(tr);
-      tuneVideoSender(tr.sender);
-    }
+    if (t.kind === 'video') { preferCodecs(tr); tuneVideoSender(tr.sender); }
     return tr.sender;
   });
 }
 
-// VP9 > AV1 > H264 > VP8 : VP9 est bien meilleur pour du contenu d'écran à débit égal
 function preferCodecs(tr) {
   const caps = RTCRtpSender.getCapabilities?.('video');
   if (!caps || !tr.setCodecPreferences) return;
-  const rank = c => {
-    const m = c.mimeType.toLowerCase();
-    return m.includes('vp9') ? 0 : m.includes('av1') ? 1 : m.includes('h264') ? 2 : m.includes('vp8') ? 3 : 4;
-  };
+  const rank = c => { const m = c.mimeType.toLowerCase(); return m.includes('vp9') ? 0 : m.includes('av1') ? 1 : m.includes('h264') ? 2 : m.includes('vp8') ? 3 : 4; };
   try { tr.setCodecPreferences([...caps.codecs].sort((a, b) => rank(a) - rank(b))); } catch {}
 }
 
@@ -285,7 +811,6 @@ async function tuneVideoSender(sender) {
     if (!p.encodings?.length) p.encodings = [{}];
     p.encodings[0].maxBitrate = 10_000_000;
     p.encodings[0].scaleResolutionDownBy = 1;
-    // Netteté : garder la résolution, quitte à baisser les images/s si le réseau sature
     p.degradationPreference = $('quality').value === 'detail' ? 'maintain-resolution' : 'maintain-framerate';
     await sender.setParameters(p);
   } catch (e) { console.warn('setParameters', e); }
@@ -296,28 +821,6 @@ $('quality').onchange = () => {
   screenStream.getVideoTracks()[0].contentHint = $('quality').value;
   screenSenders.filter(s => s.track?.kind === 'video').forEach(tuneVideoSender);
 };
-
-// ---------- Stats (diagnostic) ----------
-let lastBytes = {};
-$('statsBtn').onclick = () => ($('stats').hidden = !$('stats').hidden);
-setInterval(async () => {
-  if (!pc || $('stats').hidden) return;
-  const out = [];
-  const stats = await pc.getStats();
-  stats.forEach(r => {
-    if (r.kind !== 'video') return;
-    if (r.type !== 'inbound-rtp' && r.type !== 'outbound-rtp') return;
-    const bytes = r.type === 'inbound-rtp' ? r.bytesReceived : r.bytesSent;
-    const prev = lastBytes[r.id];
-    lastBytes[r.id] = { bytes, t: r.timestamp };
-    const kbps = prev ? Math.round((bytes - prev.bytes) * 8 / (r.timestamp - prev.t)) : 0;
-    const codec = stats.get(r.codecId)?.mimeType?.split('/')[1] || '?';
-    const line = `${r.frameWidth || '?'}×${r.frameHeight || '?'} · ${Math.round(r.framesPerSecond || 0)} ips · ${(kbps / 1000).toFixed(1)} Mb/s · ${codec}`;
-    if (r.type === 'inbound-rtp') out.push('Reçu   : ' + line);
-    else out.push('Envoyé : ' + line + (r.qualityLimitationReason && r.qualityLimitationReason !== 'none' ? ` ⚠️ limité par ${r.qualityLimitationReason === 'bandwidth' ? 'la connexion' : 'le processeur'}` : ''));
-  });
-  $('stats').textContent = out.join('\n') || 'Pas de vidéo en cours';
-}, 1000);
 
 function stopShare() {
   if (!screenStream) return;
@@ -337,34 +840,54 @@ function updateStage() {
   const local = !!screenStream;
   $('remoteScreen').hidden = !remote;
   $('localScreen').hidden = !local;
-  // si je suis le seul à partager, mon aperçu passe en grand
-  $('localScreen').style.cssText = local && !remote
-    ? 'position:static;width:100%;height:100%;min-width:0;border:0;object-fit:contain'
-    : '';
+  $('localScreen').classList.toggle('big', local && !remote);
   $('placeholder').hidden = remote || local;
 }
 
-// ---------- Contrôles ----------
+// ============ CONTRÔLES ============
 $('micBtn').onclick = () => {
   const t = micStream.getAudioTracks()[0];
   t.enabled = !t.enabled;
-  $('micBtn').textContent = t.enabled ? '🎙️ Micro ON' : '🔇 Micro OFF';
+  $('micBtn').textContent = t.enabled ? '🎙️ Micro' : '🔇 Muet';
   $('micBtn').classList.toggle('off', !t.enabled);
+  send({ type: 'mic', on: t.enabled });
 };
 $('voiceVol').oninput = e => ($('remoteVoice').volume = e.target.value);
 $('screenVol').oninput = e => ($('remoteScreen').volume = e.target.value);
 $('fsBtn').onclick = () => $('stage').requestFullscreen?.();
 $('unmute').onclick = () => {
+  audioCtx?.resume();
   $('remoteScreen').play().catch(() => {});
   $('remoteVoice').play().catch(() => {});
   $('unmute').hidden = true;
 };
 $('copyBtn').onclick = async () => {
-  await navigator.clipboard.writeText(location.href);
-  $('copyBtn').textContent = '✅ Copié';
-  setTimeout(() => ($('copyBtn').textContent = '🔗 Copier le lien'), 1500);
+  try { await navigator.clipboard.writeText(location.href); toast('🔗 Lien copié, envoie-le à l’autre !'); }
+  catch { prompt('Copie ce lien :', location.href); }
 };
 $('leaveBtn').onclick = () => { location.hash = ''; location.reload(); };
+
+// ============ STATS ============
+let lastBytes = {};
+$('statsBtn').onclick = () => ($('stats').hidden = !$('stats').hidden);
+setInterval(async () => {
+  if (!pc || $('stats').hidden) return;
+  const out = [];
+  const stats = await pc.getStats();
+  stats.forEach(r => {
+    if (r.kind !== 'video' || (r.type !== 'inbound-rtp' && r.type !== 'outbound-rtp')) return;
+    const bytes = r.type === 'inbound-rtp' ? r.bytesReceived : r.bytesSent;
+    const prev = lastBytes[r.id];
+    lastBytes[r.id] = { bytes, t: r.timestamp };
+    const kbps = prev ? Math.round((bytes - prev.bytes) * 8 / (r.timestamp - prev.t)) : 0;
+    const codec = stats.get(r.codecId)?.mimeType?.split('/')[1] || '?';
+    const line = `${r.frameWidth || '?'}×${r.frameHeight || '?'} · ${Math.round(r.framesPerSecond || 0)} ips · ${(kbps / 1000).toFixed(1)} Mb/s · ${codec}`;
+    if (r.type === 'inbound-rtp') out.push('Reçu   : ' + line);
+    else out.push('Envoyé : ' + line + (r.qualityLimitationReason && r.qualityLimitationReason !== 'none'
+      ? ` ⚠️ limité par ${r.qualityLimitationReason === 'bandwidth' ? 'la connexion' : 'le processeur'}` : ''));
+  });
+  $('stats').textContent = out.join('\n') || 'Pas de vidéo en cours';
+}, 1000);
 </script>
 </body>
 </html>
