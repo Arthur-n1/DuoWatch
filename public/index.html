@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Duo Watch</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, sans-serif; background: #0e0f13; color: #eee; height: 100vh; display: flex; flex-direction: column; }
+  button, input { font: inherit; }
+  button { background: #2a2d38; color: #eee; border: 0; border-radius: 8px; padding: 9px 14px; cursor: pointer; }
+  button:hover { background: #3a3e4d; }
+  button.primary { background: #5b6cff; }
+  button.danger { background: #c0392b; }
+  button.off { background: #7a2a2a; }
+  #lobby { margin: auto; text-align: center; width: min(420px, 90vw); }
+  #lobby h1 { font-size: 2.2rem; margin-bottom: 4px; }
+  #lobby p.sub { color: #999; margin-top: 0; }
+  #lobby input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #333; background: #1a1c23; color: #eee; margin: 16px 0 10px; }
+  #lobby button { width: 100%; padding: 12px; }
+  #lobbyMsg { color: #ff7b7b; min-height: 1.2em; }
+  #call { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  #stage { position: relative; flex: 1; background: #000; min-height: 0; display: flex; align-items: center; justify-content: center; }
+  #remoteScreen { width: 100%; height: 100%; object-fit: contain; }
+  #localScreen { position: absolute; right: 12px; bottom: 12px; width: 22%; min-width: 160px; border: 2px solid #5b6cff; border-radius: 8px; background: #000; }
+  #placeholder { position: absolute; color: #777; text-align: center; padding: 20px; }
+  #unmute { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); }
+  #bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px; background: #16181f; }
+  #status { flex: 1 1 200px; font-size: .9rem; color: #bbb; }
+  label { font-size: .85rem; display: flex; align-items: center; gap: 6px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+
+<div id="lobby">
+  <h1>🎬 Duo Watch</h1>
+  <p class="sub">Appel + partage d'écran avec le son, à deux.</p>
+  <input id="room" placeholder="Code du salon (ex : soiree-film)" autocomplete="off">
+  <button id="joinBtn" class="primary">Rejoindre</button>
+  <p id="lobbyMsg"></p>
+</div>
+
+<div id="call" hidden>
+  <div id="stage">
+    <video id="remoteScreen" autoplay playsinline hidden></video>
+    <video id="localScreen" autoplay playsinline muted hidden></video>
+    <div id="placeholder">Personne ne partage son écran.</div>
+    <button id="unmute" class="primary" hidden>🔊 Cliquer pour activer le son</button>
+  </div>
+  <div id="bar">
+    <span id="status">…</span>
+    <button id="copyBtn">🔗 Copier le lien</button>
+    <button id="micBtn">🎙️ Micro ON</button>
+    <button id="shareBtn" class="primary">🖥️ Partager l'écran</button>
+    <label>🗣️ Voix <input id="voiceVol" type="range" min="0" max="1" step="0.05" value="1"></label>
+    <label>🎬 Son écran <input id="screenVol" type="range" min="0" max="1" step="0.05" value="1"></label>
+    <button id="fsBtn">⛶ Plein écran</button>
+    <button id="leaveBtn" class="danger">Quitter</button>
+  </div>
+</div>
+
+<audio id="remoteVoice" autoplay></audio>
+
+<script>
+const $ = id => document.getElementById(id);
+let ws, pc, iceConfig, micStream, screenStream;
+let polite = false, makingOffer = false, ignoreOffer = false;
+let screenSenders = [], remoteScreenId = null;
+
+$('room').value = decodeURIComponent(location.hash.slice(1));
+$('room').addEventListener('keydown', e => e.key === 'Enter' && $('joinBtn').click());
+
+const send = obj => ws?.readyState === 1 && ws.send(JSON.stringify(obj));
+const setStatus = t => ($('status').textContent = t);
+
+// ---------- Rejoindre ----------
+$('joinBtn').onclick = async () => {
+  const room = $('room').value.trim();
+  if (!room) return ($('lobbyMsg').textContent = 'Entre un code de salon.');
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+    });
+  } catch (e) {
+    return ($('lobbyMsg').textContent = 'Accès au micro refusé : ' + e.message);
+  }
+  iceConfig = await fetch('/config').then(r => r.json());
+  location.hash = encodeURIComponent(room);
+  $('lobby').hidden = true;
+  $('call').hidden = false;
+  connect(room);
+};
+
+function connect(room) {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}`);
+  ws.onopen = () => send({ type: 'join', room });
+  ws.onclose = () => setStatus('⚠️ Déconnecté du serveur — recharge la page.');
+  ws.onmessage = async ({ data }) => {
+    const msg = JSON.parse(data);
+    switch (msg.type) {
+      case 'joined': setStatus('⏳ En attente de l’autre personne… Envoie-lui le lien.'); break;
+      case 'full': alert('Salon plein (2 personnes max).'); location.hash = ''; location.reload(); break;
+      case 'ready': polite = msg.polite; startPeer(); setStatus('🔄 Connexion…'); break;
+      case 'peer-left': closePeer(); setStatus('👋 L’autre est parti. En attente…'); break;
+      case 'screen': remoteScreenId = msg.id; break;
+      case 'screen-stop': remoteScreenId = null; $('remoteScreen').srcObject = null; updateStage(); break;
+      case 'description': await onDescription(msg.description); break;
+      case 'candidate':
+        try { await pc?.addIceCandidate(msg.candidate); }
+        catch (e) { if (!ignoreOffer) console.error(e); }
+        break;
+    }
+  };
+}
+
+// ---------- WebRTC (perfect negotiation) ----------
+function startPeer() {
+  closePeer();
+  pc = new RTCPeerConnection(iceConfig);
+  micStream.getTracks().forEach(t => pc.addTrack(t, micStream));
+  if (screenStream) addScreenTracks();
+
+  pc.onicecandidate = ({ candidate }) => candidate && send({ type: 'candidate', candidate });
+
+  pc.onnegotiationneeded = async () => {
+    try {
+      makingOffer = true;
+      await pc.setLocalDescription();
+      send({ type: 'description', description: pc.localDescription });
+    } catch (e) { console.error(e); }
+    finally { makingOffer = false; }
+  };
+
+  pc.ontrack = ({ track, streams }) => {
+    const stream = streams[0] || new MediaStream([track]);
+    if (stream.id === remoteScreenId) {
+      const v = $('remoteScreen');
+      if (v.srcObject !== stream) v.srcObject = stream;
+      v.play().catch(() => ($('unmute').hidden = false));
+      updateStage();
+    } else {
+      const a = $('remoteVoice');
+      if (a.srcObject !== stream) a.srcObject = stream;
+      a.play().catch(() => ($('unmute').hidden = false));
+    }
+  };
+
+  pc.onconnectionstatechange = () => {
+    const s = pc.connectionState;
+    const labels = {
+      connecting: '🔄 Connexion…',
+      connected: '✅ Connecté',
+      disconnected: '⚠️ Connexion instable…',
+      failed: '❌ Connexion impossible (réseau bloquant → configurer un TURN)'
+    };
+    setStatus(labels[s] || s);
+    if (s === 'failed') pc.restartIce();
+  };
+}
+
+async function onDescription(description) {
+  if (!pc) return;
+  const collision = description.type === 'offer' && (makingOffer || pc.signalingState !== 'stable');
+  ignoreOffer = !polite && collision;
+  if (ignoreOffer) return;
+  await pc.setRemoteDescription(description);
+  if (description.type === 'offer') {
+    await pc.setLocalDescription();
+    send({ type: 'description', description: pc.localDescription });
+  }
+}
+
+function closePeer() {
+  pc?.close();
+  pc = null;
+  screenSenders = [];
+  remoteScreenId = null;
+  $('remoteScreen').srcObject = null;
+  $('remoteVoice').srcObject = null;
+  updateStage();
+}
+
+// ---------- Partage d'écran ----------
+$('shareBtn').onclick = () => (screenStream ? stopShare() : startShare());
+
+async function startShare() {
+  try {
+    screenStream = await navigator.mediaDevices.getDisplayMedia({
+      video: { frameRate: { ideal: 30 }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: {
+        echoCancellation: false, noiseSuppression: false, autoGainControl: false,
+        suppressLocalAudioPlayback: false,
+        restrictOwnAudio: true // évite de renvoyer la voix de l'autre (Chrome récent)
+      },
+      systemAudio: 'include',
+      selfBrowserSurface: 'exclude',
+      surfaceSwitching: 'include'
+    });
+  } catch { return; } // annulé par l'utilisateur
+
+  const v = screenStream.getVideoTracks()[0];
+  v.contentHint = 'motion';
+  v.onended = stopShare; // bouton "Arrêter le partage" du navigateur
+
+  if (!screenStream.getAudioTracks().length) {
+    alert('⚠️ Aucun son capturé.\nRelance le partage et coche « Partager l’audio » (onglet ou écran entier sous Windows).');
+  }
+
+  $('localScreen').srcObject = screenStream;
+  $('shareBtn').textContent = '⏹️ Arrêter le partage';
+  $('shareBtn').classList.replace('primary', 'danger');
+  updateStage();
+  if (pc) addScreenTracks();
+}
+
+function addScreenTracks() {
+  send({ type: 'screen', id: screenStream.id }); // envoyé AVANT l'offre → l'autre sait quel flux est l'écran
+  screenSenders = screenStream.getTracks().map(t =>
+    pc.addTransceiver(t, {
+      direction: 'sendonly',
+      streams: [screenStream],
+      sendEncodings: [{ maxBitrate: t.kind === 'video' ? 6_000_000 : 128_000 }]
+    }).sender
+  );
+}
+
+function stopShare() {
+  if (!screenStream) return;
+  screenStream.getTracks().forEach(t => t.stop());
+  if (pc) screenSenders.forEach(s => { try { pc.removeTrack(s); } catch {} });
+  screenSenders = [];
+  screenStream = null;
+  send({ type: 'screen-stop' });
+  $('localScreen').srcObject = null;
+  $('shareBtn').textContent = '🖥️ Partager l\'écran';
+  $('shareBtn').classList.replace('danger', 'primary');
+  updateStage();
+}
+
+function updateStage() {
+  const remote = !!$('remoteScreen').srcObject;
+  const local = !!screenStream;
+  $('remoteScreen').hidden = !remote;
+  $('localScreen').hidden = !local;
+  // si je suis le seul à partager, mon aperçu passe en grand
+  $('localScreen').style.cssText = local && !remote
+    ? 'position:static;width:100%;height:100%;min-width:0;border:0;object-fit:contain'
+    : '';
+  $('placeholder').hidden = remote || local;
+}
+
+// ---------- Contrôles ----------
+$('micBtn').onclick = () => {
+  const t = micStream.getAudioTracks()[0];
+  t.enabled = !t.enabled;
+  $('micBtn').textContent = t.enabled ? '🎙️ Micro ON' : '🔇 Micro OFF';
+  $('micBtn').classList.toggle('off', !t.enabled);
+};
+$('voiceVol').oninput = e => ($('remoteVoice').volume = e.target.value);
+$('screenVol').oninput = e => ($('remoteScreen').volume = e.target.value);
+$('fsBtn').onclick = () => $('stage').requestFullscreen?.();
+$('unmute').onclick = () => {
+  $('remoteScreen').play().catch(() => {});
+  $('remoteVoice').play().catch(() => {});
+  $('unmute').hidden = true;
+};
+$('copyBtn').onclick = async () => {
+  await navigator.clipboard.writeText(location.href);
+  $('copyBtn').textContent = '✅ Copié';
+  setTimeout(() => ($('copyBtn').textContent = '🔗 Copier le lien'), 1500);
+};
+$('leaveBtn').onclick = () => { location.hash = ''; location.reload(); };
+</script>
+</body>
+</html>
