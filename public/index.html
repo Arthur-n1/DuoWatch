@@ -323,7 +323,15 @@ function connect(room, name) {
   ws.onmessage = async ({ data }) => {
     const msg = JSON.parse(data);
     switch (msg.type) {
-      case 'joined': myId = msg.id; setStatus('⏳ En attente de l’autre… Envoie-lui le lien 🔗'); break;
+      case 'joined':
+        myId = msg.id;
+        setStatus('⏳ En attente de l’autre… Envoie-lui le lien 🔗');
+        if (!msg.version || msg.version < 3) {
+          const warn = '⚠️ Le serveur n’est pas à jour : remplace server.js sur GitHub puis redéploie sur Render. Le chat et les films ne marcheront pas avant.';
+          addSystem(warn);
+          alert(warn);
+        }
+        break;
       case 'full': alert('Salon plein (2 personnes max).'); location.hash = ''; location.reload(); break;
       case 'presence': people = msg.people; renderPeople(); renderFilms(); break;
       case 'system': addSystem(msg.text); break;
