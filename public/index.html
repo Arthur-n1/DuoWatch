@@ -22,6 +22,7 @@
   button.primary:hover:not(:disabled) { background: var(--accent2); }
   button.danger { background: var(--red); border-color: var(--red); }
   button.off { background: #4a1d22; border-color: #6b2a30; }
+  button.on { background: #173d2b; border-color: var(--green); }
   input[type=text], input:not([type]) { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; outline: none; width: 100%; }
   input:focus { border-color: var(--accent); }
   select { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
@@ -40,8 +41,18 @@
   #call { height: 100%; display: grid; grid-template-columns: 1fr 340px; grid-template-rows: 1fr auto; }
   #stage { position: relative; background: #000; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
   #remoteScreen { width: 100%; height: 100%; object-fit: contain; }
-  #localScreen { position: absolute; right: 12px; bottom: 12px; width: 22%; min-width: 150px; border: 2px solid var(--accent); border-radius: 10px; background: #000; }
+  #localScreen { position: absolute; right: 12px; bottom: 12px; z-index: 2; width: 22%; min-width: 150px; border: 2px solid var(--accent); border-radius: 10px; background: #000; }
   #localScreen.big { position: static; width: 100%; height: 100%; min-width: 0; border: 0; border-radius: 0; object-fit: contain; }
+  #cams { position: absolute; top: 12px; right: 12px; display: flex; gap: 8px; z-index: 3; }
+  .cam { position: relative; width: 200px; aspect-ratio: 16 / 9; background: #111; border-radius: 12px; overflow: hidden; border: 2px solid var(--line); box-shadow: 0 6px 20px #000a; transition: border-color .15s, box-shadow .15s; }
+  .cam.speaking { border-color: var(--green); box-shadow: 0 0 16px #2fd67b88; }
+  .cam video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .cam.mine video { transform: scaleX(-1); }
+  .cam span { position: absolute; left: 6px; bottom: 5px; font-size: .75rem; background: #000a; padding: 2px 7px; border-radius: 6px; }
+  #cams.solo { position: static; width: 100%; height: 100%; padding: 16px; justify-content: center; align-items: center; flex-wrap: wrap; gap: 14px; }
+  #cams.solo .cam { width: min(46%, 640px); }
+  #cams.solo .cam:only-child { width: min(90%, 960px); }
+  #cams.hidecams .cam { display: none; }
   #placeholder { position: absolute; color: var(--muted); text-align: center; padding: 20px; line-height: 1.6; }
   #placeholder b { color: var(--text); font-size: 1.2rem; }
   #unmute { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 2; }
@@ -176,7 +187,11 @@
   <main id="stage">
     <video id="remoteScreen" autoplay playsinline hidden></video>
     <video id="localScreen" autoplay playsinline muted hidden></video>
-    <div id="placeholder"><b>Personne ne partage son écran</b><br>Clique sur 🖥️ Partager l'écran pour lancer un film.</div>
+    <div id="cams">
+      <div class="cam mine" id="myCamTile" hidden><video id="localCam" autoplay playsinline muted></video><span>Toi</span></div>
+      <div class="cam" id="peerCamTile" hidden><video id="remoteCam" autoplay playsinline muted></video><span id="peerCamName"></span></div>
+    </div>
+    <div id="placeholder"><b>Personne ne partage son écran</b><br>Clique sur 🖥️ Partager l'écran pour lancer un film, ou 📷 pour la caméra.</div>
     <button id="unmute" class="primary" hidden>🔊 Cliquer pour activer le son</button>
     <div id="stats" hidden></div>
   </main>
@@ -211,6 +226,7 @@
   <footer id="bar">
     <span id="status">…</span>
     <button id="micBtn">🎙️ Micro</button>
+    <button id="camBtn">📷 Caméra</button>
     <button id="shareBtn" class="primary">🖥️ Partager l'écran</button>
     <select id="quality" title="Qualité du partage">
       <option value="detail">🔍 Netteté max</option>
@@ -218,6 +234,7 @@
     </select>
     <label class="vol">🗣️ <input id="voiceVol" type="range" min="0" max="1" step="0.05" value="1"></label>
     <label class="vol">🎬 <input id="screenVol" type="range" min="0" max="1" step="0.05" value="1"></label>
+    <button id="camsToggle" title="Masquer / afficher les caméras" hidden>👁️</button>
     <button id="fsBtn" title="Plein écran">⛶</button>
     <button id="statsBtn" title="Résolution / débit">📊</button>
     <button id="copyBtn" title="Copier le lien d'invitation">🔗</button>
@@ -270,6 +287,7 @@ const el = (tag, props = {}, ...kids) => {
 let ws, pc, iceConfig, micStream, screenStream, myId, audioCtx;
 let polite = false, makingOffer = false, ignoreOffer = false;
 let screenSenders = [], remoteScreenId = null;
+let camStream = null, camSenders = [], remoteCamId = null;
 let people = [], films = [], phase = 'idle', done = [], result = null;
 let activeTab = 'chat', unread = 0;
 
@@ -326,14 +344,14 @@ function connect(room, name) {
       case 'joined':
         myId = msg.id;
         setStatus('⏳ En attente de l’autre… Envoie-lui le lien 🔗');
-        if (!msg.version || msg.version < 3) {
+        if (!msg.version || msg.version < 4) {
           const warn = '⚠️ Le serveur n’est pas à jour : remplace server.js sur GitHub puis redéploie sur Render. Le chat et les films ne marcheront pas avant.';
           addSystem(warn);
           alert(warn);
         }
         break;
       case 'full': alert('Salon plein (2 personnes max).'); location.hash = ''; location.reload(); break;
-      case 'presence': people = msg.people; renderPeople(); renderFilms(); break;
+      case 'presence': people = msg.people; renderPeople(); renderFilms(); updateStage(); break;
       case 'system': addSystem(msg.text); break;
       case 'chat': addChat(msg); break;
       case 'films': onFilms(msg); break;
@@ -346,6 +364,8 @@ function connect(room, name) {
       case 'ready': polite = msg.polite; startPeer(); setStatus('🔄 Connexion…'); break;
       case 'peer-left': closePeer(); setStatus('👋 L’autre est parti. En attente…'); break;
       case 'screen': remoteScreenId = msg.id; break;
+      case 'cam': remoteCamId = msg.id; break;
+      case 'cam-stop': remoteCamId = null; $('remoteCam').srcObject = null; updateStage(); break;
       case 'screen-stop': remoteScreenId = null; $('remoteScreen').srcObject = null; updateStage(); break;
       case 'description': await onDescription(msg.description); break;
       case 'candidate':
@@ -386,6 +406,7 @@ setInterval(() => {
     if (sp !== speaking[k]) {
       speaking[k] = sp;
       document.querySelectorAll(`.avatar[data-key="${k}"]`).forEach(a => a.classList.toggle('speaking', sp));
+      $(k === 'me' ? 'myCamTile' : 'peerCamTile').classList.toggle('speaking', sp);
     }
   }
 }, 80);
@@ -398,7 +419,7 @@ function renderPeople() {
       el('div', { class: 'avatar' + (speaking[key] ? ' speaking' : ''), 'data-key': key, style: `background:${colorFor(p.name)}` },
         initials(p.name), el('span', { class: 'dot', title: 'Connecté' })),
       el('div', { class: 'pname' }, p.name, me ? el('small', {}, ' (toi)') : null),
-      el('span', { class: 'picons', title: p.sharing ? 'Partage son écran' : '' }, (p.sharing ? '🖥️ ' : '') + (p.mic ? '' : '🔇')));
+      el('span', { class: 'picons', title: p.sharing ? 'Partage son écran' : '' }, (p.sharing ? '🖥️ ' : '') + (p.cam ? '📷 ' : '') + (p.mic ? '' : '🔇')));
   });
   if (people.length < 2) rows.push(el('div', { class: 'person waiting' }, el('div', { class: 'avatar' }), 'En attente de quelqu’un…'));
   $('peopleList').replaceChildren(...rows);
@@ -680,6 +701,7 @@ function startPeer() {
   pc = new RTCPeerConnection(iceConfig);
   micStream.getTracks().forEach(t => pc.addTrack(t, micStream));
   if (screenStream) addScreenTracks();
+  if (camStream) addCamTracks();
 
   pc.onicecandidate = ({ candidate }) => candidate && send({ type: 'candidate', candidate });
   pc.onnegotiationneeded = async () => {
@@ -693,7 +715,13 @@ function startPeer() {
 
   pc.ontrack = ({ track, streams }) => {
     const stream = streams[0] || new MediaStream([track]);
-    if (stream.id === remoteScreenId) {
+    if (stream.id === remoteCamId || (track.kind === 'video' && stream.id !== remoteScreenId)) {
+      const v = $('remoteCam');
+      if (v.srcObject !== stream) v.srcObject = stream;
+      v.play().catch(() => {});
+      track.onunmute = updateStage;
+      updateStage();
+    } else if (stream.id === remoteScreenId) {
       const v = $('remoteScreen');
       if (v.srcObject !== stream) v.srcObject = stream;
       v.play().catch(() => ($('unmute').hidden = false));
@@ -754,6 +782,9 @@ function closePeer() {
   pc = null;
   screenSenders = [];
   remoteScreenId = null;
+  camSenders = [];
+  remoteCamId = null;
+  $('remoteCam').srcObject = null;
   $('remoteScreen').srcObject = null;
   $('remoteVoice').srcObject = null;
   updateStage();
@@ -843,13 +874,68 @@ function stopShare() {
   updateStage();
 }
 
+// ============ CAMÉRA ============
+$('camBtn').onclick = () => (camStream ? stopCam() : startCam());
+
+async function startCam() {
+  $('camBtn').disabled = true;
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 }, facingMode: 'user' }
+    });
+  } catch (e) {
+    $('camBtn').disabled = false;
+    return toast('📷 Caméra inaccessible : ' + (e.name === 'NotAllowedError' ? 'autorisation refusée' : e.message));
+  }
+  $('camBtn').disabled = false;
+  camStream.getVideoTracks()[0].onended = stopCam;
+  $('localCam').srcObject = camStream;
+  $('camBtn').textContent = '📷 Couper';
+  $('camBtn').classList.add('on');
+  if (pc) addCamTracks();
+  else send({ type: 'cam', id: camStream.id });
+  updateStage();
+}
+
+function addCamTracks() {
+  send({ type: 'cam', id: camStream.id }); // avant l'offre → l'autre sait que ce flux est la caméra
+  camSenders = camStream.getVideoTracks().map(t =>
+    pc.addTransceiver(t, { direction: 'sendonly', streams: [camStream], sendEncodings: [{ maxBitrate: 1_500_000 }] }).sender);
+}
+
+function stopCam() {
+  if (!camStream) return;
+  camStream.getTracks().forEach(t => t.stop());
+  if (pc) camSenders.forEach(s => { try { pc.removeTrack(s); } catch {} });
+  camSenders = [];
+  camStream = null;
+  send({ type: 'cam-stop' });
+  $('localCam').srcObject = null;
+  $('camBtn').textContent = '📷 Caméra';
+  $('camBtn').classList.remove('on');
+  updateStage();
+}
+
+let camsHidden = false;
+$('camsToggle').onclick = () => { camsHidden = !camsHidden; updateStage(); };
+
 function updateStage() {
   const remote = !!$('remoteScreen').srcObject;
   const local = !!screenStream;
+  const myCam = !!camStream;
+  const peerCam = !!$('remoteCam').srcObject;
   $('remoteScreen').hidden = !remote;
   $('localScreen').hidden = !local;
   $('localScreen').classList.toggle('big', local && !remote);
-  $('placeholder').hidden = remote || local;
+  $('myCamTile').hidden = !myCam;
+  $('peerCamTile').hidden = !peerCam;
+  $('peerCamName').textContent = people.find(p => p.id !== myId)?.name || '';
+  // aucun partage d'écran → les caméras passent en grand au centre
+  $('cams').classList.toggle('solo', !remote && !local);
+  $('cams').classList.toggle('hidecams', camsHidden && (remote || local));
+  $('camsToggle').hidden = !((remote || local) && (myCam || peerCam));
+  $('camsToggle').textContent = camsHidden ? '🙈' : '👁️';
+  $('placeholder').hidden = remote || local || myCam || peerCam;
 }
 
 // ============ CONTRÔLES ============
