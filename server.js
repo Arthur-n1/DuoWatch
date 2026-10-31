@@ -66,7 +66,7 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === '/health') {
     res.writeHead(200);
-    return res.end('ok v3');
+    return res.end('ok v4');
   }
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
   res.end(html);
@@ -92,7 +92,7 @@ function getRoom(name) {
 function presence(room) {
   broadcast(room, {
     type: 'presence',
-    people: [...room.peers].map(p => ({ id: p.id, name: p.name, mic: p.mic, sharing: p.sharing })),
+    people: [...room.peers].map(p => ({ id: p.id, name: p.name, mic: p.mic, sharing: p.sharing, cam: p.cam })),
   });
 }
 
@@ -136,6 +136,7 @@ wss.on('connection', ws => {
   ws.isAlive = true;
   ws.mic = true;
   ws.sharing = false;
+  ws.cam = false;
   ws.on('pong', () => (ws.isAlive = true));
 
   ws.on('message', raw => {
@@ -150,7 +151,7 @@ wss.on('connection', ws => {
       ws.name = String(msg.name || '').trim().slice(0, 24) || 'Invité';
       ws.room = room;
       room.peers.add(ws);
-      send(ws, { type: 'joined', id: ws.id, version: 3 });
+      send(ws, { type: 'joined', id: ws.id, version: 4 });
       presence(room);
       filmsState(room);
       room.peers.forEach(p => p !== ws && send(p, { type: 'system', text: `${ws.name} a rejoint le salon` }));
@@ -226,6 +227,12 @@ wss.on('connection', ws => {
         ws.sharing = msg.type === 'screen';
         presence(room);
         break; // + relayé ci-dessous
+
+      case 'cam':
+      case 'cam-stop':
+        ws.cam = msg.type === 'cam';
+        presence(room);
+        break;
     }
 
     // Signalisation WebRTC (et screen/screen-stop) : relayée à l'autre personne
